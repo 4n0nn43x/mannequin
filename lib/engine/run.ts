@@ -3,14 +3,15 @@ import type { Sandbox } from '@nodeops-createos/sandbox'
 import { readFileSync } from 'node:fs'
 import { ASSETS } from './assets.gen'
 import { agentTask, type AgentEvent } from './agent'
-import { classify, evidence, fetchAs, fingerprint, type Fingerprint } from './probe'
+import { classify, evidence, fetchAs, fingerprint, fingerprintPlans, planOf, type Fingerprint } from './probe'
 import * as S from './stripe'
-import { CLIENTS, cell, controlsOk, expected, timeline, type Cell, type ClientId, type Seen } from './timeline'
+import { CLIENTS, cell, controlsOk, expected, planCell, timeline, type Cell, type ClientId, type Seen } from './timeline'
 import { createos, daemon, findSandbox, must, put, setOffset, SHAPE, sh, snapshotName, waitHttp } from './vm'
 
 export type RunInput = { repo: string; stripeKey: string; route?: string; webhookPath?: string; apiVersion?: string; snapshot?: string }
 export type Pass = 'main' | 'patched'
-export type Row = { pass: Pass; step: string; at: number; id: ClientId; status: string; seen: Seen; expect: string; cell: Cell; excerpt: string }
+/** plan / stripePlan: only for apps with several plans (the plan the page shows, the plan Stripe bills). */
+export type Row = { pass: Pass; step: string; at: number; id: ClientId; status: string; seen: Seen; expect: string; cell: Cell; excerpt: string; plan?: string; stripePlan?: string }
 export type RunEvent =
   | { type: 'phase'; text: string }
   | { type: 'log'; text: string }
@@ -54,7 +55,7 @@ export async function run(input: RunInput, emit: (e: RunEvent) => void): Promise
   let summary: Summary
   try {
     const det = await detect(vm, input)
-    emit({ type: 'detected', data: det })
+    emit({ type: 'detected', data: { ...det, plans: det.plans.map((p) => `${p.tier} (${p.env})`).join(', '), interval: det.interval } })
     const main = await scenario(vm, stripe, input, det, 'main', emit, agentLog)
     summary = main.summary
     if (!summary.red.length) return finish(emit, summary)
@@ -95,8 +96,8 @@ async function scenario(vm: Sandbox, stripe: ReturnType<typeof S.stripeFor>, inp
   try {
     phase('Creating test clocks, customers and subscriptions in Stripe')
     const t0 = Math.floor(Date.now() / 1000) // never backdate: the app's TLS calls to Stripe follow its clock
-    const st = await S.setup(stripe, Date.now().toString(36), t0)
-    Object.assign(created, { clocks: st.clocks, price: st.price.id, product: st.product.id })
+    const st = await S.setup(stripe, Date.now().toString(36), t0, det.plans, det.interval)
+    Object.assign(created, { clocks: st.clocks, prices: Object.values(st.prices), product: st.product.id })
 
     const haveSeed = (await sh(vm, 'test -s /root/mq/seed.js')).code === 0
     if (!haveSeed) {
@@ -105,7 +106,7 @@ async function scenario(vm: Sandbox, stripe: ReturnType<typeof S.stripeFor>, inp
     }
     const seed = st.subs.map((s) => ({ email: s.email, name: 'Mannequin Customer', // same name for all: the probe must read the plan, not the person
       stripeCustomerId: s.customer ?? null, stripeSubscriptionId: s.sub ?? null,
-      stripePriceId: s.sub ? st.price.id : null, stripeCurrentPeriodEnd: s.periodEnd ?? null })) // trial: period end = trial end, as checkout would store it
+      stripePriceId: s.price ?? null, stripeCurrentPeriodEnd: s.periodEnd ?? null })) // trial: period end = trial end, as checkout would store it
     await put(vm, '/root/mq/seed.json', JSON.stringify(seed))
     await must(vm, 'cd /root/app && node /root/mq/seed.js /root/mq/seed.json')
 
@@ -113,10 +114,13 @@ async function scenario(vm: Sandbox, stripe: ReturnType<typeof S.stripeFor>, inp
     await vm.setIngress(true)
     const ep = await S.webhookEndpoint(stripe, vm.previewUrl(8787) + det.webhookPath, det.apiVersion)
     created.endpoint = ep.id
-    await must(vm, `cd /root/app && sed -i '/^STRIPE_API_KEY=/d;/^STRIPE_WEBHOOK_SECRET=/d;/^STRIPE_PRO_MONTHLY_PLAN_ID=/d' .env && cat >> .env <<'EOF'
+    // every plan env var the app reads gets its test price (names come from a [A-Z0-9_] grep: safe in sed and the heredoc)
+    const planEnv = Object.entries(st.prices)
+    const drop = ['STRIPE_API_KEY', 'STRIPE_WEBHOOK_SECRET', ...planEnv.map(([k]) => k)].map((k) => `/^${k}=/d`).join(';')
+    await must(vm, `cd /root/app && sed -i '${drop}' .env && cat >> .env <<'EOF'
 STRIPE_API_KEY=${input.stripeKey}
 STRIPE_WEBHOOK_SECRET=${ep.secret}
-STRIPE_PRO_MONTHLY_PLAN_ID=${st.price.id}
+${planEnv.map(([k, v]) => `${k}=${v}`).join('\n')}
 EOF`)
     await put(vm, '/root/mq/relay.js', local('vm/relay.js'))
     await daemon(vm, 'relay', `env WHSEC=${ep.secret} node /root/mq/relay.js`)
@@ -131,30 +135,44 @@ EOF`)
 
     phase('Calibration: can the probe tell the paid control from the free control?')
     const by = (id: ClientId) => st.subs.find((s) => s.id === id)!
-    const fp = await calibrate(vm, [by('S1').email, by('S4').email], by('free_control').email, det.route, emit, agentLog)
+    // two DIFFERENT paying customers per plan: anything personal (name, email, ids) cannot end up in the fingerprint
+    const byPlan: Record<string, string[]> = { [st.tiers[0]]: [by('S1').email, by('S4').email] }
+    if (st.multi) byPlan[st.tiers.at(-1)!] = [by('P2').email, by('S7').email]
+    const fp = await calibrate(vm, byPlan, by('free_control').email, det.route, emit, agentLog)
     if (!fp) return { summary: { verdict: 'inconclusive', red: [], rows: [] } as Summary }
 
     const rows: Row[] = []
     const deadSince: Partial<Record<ClientId, number>> = {}
+    const changedAt: Partial<Record<ClientId, number>> = {} // when Stripe switched a customer's plan
+    const clients = CLIENTS.filter((c) => !c.multi || st.multi)
+    const rank = (tier: string | null) => (tier && st.tiers.includes(tier) ? st.tiers.indexOf(tier) : null)
     let seenDeliveries = 0
     for (const step of timeline(t0, st.E)) {
       await setOffset(vm, step.at - Math.floor(Date.now() / 1000)) // offset BEFORE the advance
       const advanceMs = step.at === t0 ? 0 : await S.advance(stripe, st.clocks, step.at)
       const actions = []
-      for (const a of step.actions) actions.push(await S.act(stripe, a, st.subs))
+      for (const a of step.actions) {
+        if (a === 'change_plan_S7' && !st.multi) continue
+        actions.push(await S.act(stripe, a, st.subs))
+        if (a === 'change_plan_S7') changedAt.S7 = step.at
+      }
       const all = await settle(vm, seenDeliveries)
       emit({ type: 'step', pass, name: step.name, at: step.at, advanceMs, deliveries: all.slice(seenDeliveries), actions })
       seenDeliveries = all.length
 
       const stepRows: Row[] = []
-      for (const c of CLIENTS) {
+      for (const c of clients) {
         const sub = by(c.id)
-        const { status, deadAt } = await S.status(stripe, sub)
+        const { status, deadAt, price } = await S.status(stripe, sub)
         if (['canceled', 'unpaid', 'incomplete_expired'].includes(status)) deadSince[c.id] ??= deadAt ?? step.at
         const page = await fetchAs(vm, sub.email, fp.route)
         const seen = classify(page.html, fp)
         const exp = expected(status, step.at, deadSince[c.id] ?? null)
-        const row: Row = { pass, step: step.name, at: step.at, id: c.id, status, seen, expect: exp, cell: cell(exp, seen), excerpt: evidence(page.html, fp) }
+        const plan = seen === 'paid' ? planOf(page.html, fp) : null
+        const stripePlan = price ? st.tierOfPrice[price] ?? null : null
+        const verdict = planCell(cell(exp, seen), step.at, changedAt[c.id] ?? null, rank(stripePlan), rank(plan))
+        const row: Row = { pass, step: step.name, at: step.at, id: c.id, status, seen, expect: exp, cell: verdict, excerpt: evidence(page.html, fp),
+          ...(st.multi ? { plan: plan ?? undefined, stripePlan: stripePlan ?? undefined } : {}) }
         stepRows.push(row); rows.push(row); emit({ type: 'row', row })
       }
       const bad = controlsOk(stepRows)
@@ -229,18 +247,33 @@ async function detect(vm: Sandbox, input: RunInput) {
   const apiVersion = input.apiVersion ?? (await grep(`grep -rhoE "apiVersion: *['\\"][0-9]{4}-[0-9]{2}-[0-9]{2}" lib src 2>/dev/null | head -1 | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}'`) || '2022-11-15')
   const auth = await grep(`node -e "const p=require('./package.json');const d={...p.dependencies};console.log(['next-auth','@clerk/nextjs','@supabase/supabase-js','better-auth','lucia'].filter(k=>d[k]).map(k=>k+'@'+d[k]).join(', ')||'unknown')"`)
   const route = input.route ?? ''
-  return { handler, webhookPath, apiVersion, auth, route }
+  // the app's plans: env vars holding Stripe price ids, from its env template and its code
+  const names = (await sh(vm, `cd /root/app && { cat .env.example .env.local.example .env.sample 2>/dev/null; grep -rhoE --include=*.ts --include=*.tsx --include=*.js --include=*.mjs 'STRIPE_[A-Z0-9_]+' config lib src app pages env.mjs 2>/dev/null; } | grep -oE 'STRIPE_[A-Z0-9_]*(PRICE|PLAN)[A-Z0-9_]*' | sort -u`)).out
+  const plans = S.plansFrom(names.split('\n').filter(Boolean))
+  return { handler, webhookPath, apiVersion, auth, route, plans, interval: S.intervalOf(plans[0].env) }
 }
 
-async function calibrate(vm: Sandbox, paid: string[], freeEmail: string, route: string, emit: (e: RunEvent) => void, agentLog: (t: string) => (e: AgentEvent) => void) {
+/** byPlan: plan -> two paying customers on it. One plan: the paid/free fingerprint; several: plus one per plan. */
+async function calibrate(vm: Sandbox, byPlan: Record<string, string[]>, freeEmail: string, route: string, emit: (e: RunEvent) => void, agentLog: (t: string) => (e: AgentEvent) => void) {
   const candidates = route ? [route] : await candidateRoutes(vm)
+  const paid = Object.values(byPlan).flat()
   for (let attempt = 0; attempt < 2; attempt++) {
     for (const r of candidates) {
-      // two DIFFERENT paying customers: anything personal (name, email, ids) cannot end up in the fingerprint
-      const pages = [await fetchAs(vm, paid[0], r), await fetchAs(vm, paid[1], r), await fetchAs(vm, freeEmail, r), await fetchAs(vm, freeEmail, r)]
+      const plansPages: Record<string, { status: string; html: string }[]> = {}
+      for (const [plan, emails] of Object.entries(byPlan)) plansPages[plan] = [await fetchAs(vm, emails[0], r), await fetchAs(vm, emails[1], r)]
+      const free = [await fetchAs(vm, freeEmail, r), await fetchAs(vm, freeEmail, r)]
+      const pages = [...Object.values(plansPages).flat(), ...free]
       emit({ type: 'log', text: `calibration ${r}: HTTP ${pages.map((p) => p.status).join(' ')}` })
-      const fp = pages.every((p) => p.status === '200') ? fingerprint(r, [pages[0].html, pages[1].html], [pages[2].html, pages[3].html]) : null
-      if (fp) { emit({ type: 'log', text: `fingerprint on ${r}: paid "${fp.paid.slice(0, 2).join(' | ')}" vs free "${fp.free.slice(0, 2).join(' | ')}"` }); return fp }
+      const html = (ps: { html: string }[]) => ps.map((p) => p.html)
+      const keys = Object.keys(plansPages)
+      const fp = !pages.every((p) => p.status === '200') ? null
+        : keys.length === 1 ? fingerprint(r, html(plansPages[keys[0]]), html(free))
+        : fingerprintPlans(r, Object.fromEntries(keys.map((k) => [k, html(plansPages[k])])), html(free))
+      if (fp) {
+        emit({ type: 'log', text: `fingerprint on ${r}: paid "${fp.paid.slice(0, 2).join(' | ')}" vs free "${fp.free.slice(0, 2).join(' | ')}"` })
+        if (keys.length > 1) emit({ type: 'log', text: fp.plans ? `plans on ${r}: ${Object.entries(fp.plans).map(([k, l]) => `${k} "${l[0]}"`).join(' vs ')}` : `plans on ${r}: the page shows no difference between ${keys.join(' and ')}, plan changes are not judged` })
+        return fp
+      }
     }
     if (attempt === 0) {
       // the agent fixes its own session script (wrong cookie, redirect, CSRF...) and we try again
@@ -261,8 +294,15 @@ async function candidateRoutes(vm: Sandbox) {
 async function proposePatch(vm: Sandbox, red: Row, det: Detected, agentLog: (t: string) => (e: AgentEvent) => void) {
   const handler = (await sh(vm, `cat /root/app/${det.handler}`)).out
   const access = (await sh(vm, `cd /root/app && grep -rln --include=*.ts -E 'isPro|stripeCurrentPeriodEnd' lib app 2>/dev/null | grep -v webhooks | head -2 | xargs -r head -c 2500`)).out
+  const planLeak = !!red.stripePlan && !!red.plan && red.stripePlan !== red.plan
+  const fact = planLeak
+    ? `customer ${red.id} switched to the cheaper plan ${red.stripePlan} in Stripe more than 24 hours ago, but the app still shows them the ${red.plan} plan ("${red.excerpt}").`
+    : `customer ${red.id} is "${red.status}" in Stripe (dead for more than 24 hours) but the app still shows them the paid plan ("${red.excerpt}").`
+  const fix = planLeak
+    ? 'handle "customer.subscription.updated" so the stored price and period end always follow the subscription (items.data[0].price.id and its current_period_end)'
+    : 'handle "customer.subscription.deleted" so the customer loses paid access as soon as Stripe sends it (e.g. clear the stored price and set the period end to the subscription\'s ended_at)'
   await agentTask(vm, `A billing leak was PROVEN by running the app (do not investigate it again, do not call Stripe):
-customer ${red.id} is "${red.status}" in Stripe (dead for more than 24 hours) but the app still shows them the paid plan ("${red.excerpt}").
+${fact}
 
 The webhook handler /root/app/${det.handler}:
 \`\`\`ts
@@ -273,7 +313,7 @@ Code that decides paid access:
 ${access}
 \`\`\`
 Task, in at most 3 tool calls:
-1. write_file /root/app/${det.handler} with the full fixed file: handle "customer.subscription.deleted" so the customer loses paid access as soon as Stripe sends it (e.g. clear the stored price and set the period end to the subscription's ended_at), using updateMany so an unknown subscription does not throw. Keep everything else identical.
+1. write_file /root/app/${det.handler} with the full fixed file: ${fix}, using updateMany so an unknown subscription does not throw. Keep everything else identical.
 2. sh: cd /root/app && git diff > /root/mq/patch.diff && cat /root/mq/patch.diff
 Then answer DONE.`, agentLog('patch'), 6)
   return (await sh(vm, 'cat /root/mq/patch.diff')).out
