@@ -8,7 +8,7 @@ without paying**, with the fix proven.
 
 Mannequin never reads your access-control code. It logs in as your customers and looks at what your app shows them.
 
-**Live:** https://production-mannequin-crashtest.tyzo.nodeops.app (deployed on CreateOS) ·
+**Live:** https://01m561nw9fbywfz3b96c4x6pcm-3000.app.sb.createos.sh (the app itself runs in a CreateOS Sandbox, from the Docker image `naesanon/mannequin`) ·
 **Replay of a real run:** `/replay/sample`
 
 ## Result on shadcn-ui/taxonomy (real run)
@@ -53,6 +53,15 @@ webhook, so a tool that only checks webhook responses sees nothing.
 8. **Patch**: the agent writes the smallest fix for the leak.
 
 ## Run it
+
+With Docker (the image the live demo runs):
+
+```sh
+docker run -p 3000:3000 -e CREATEOS_SANDBOX_API_KEY=... -e CREATEOS_SANDBOX_BASE_URL=https://api-eu.sb.createos.sh \
+  -e DEEPSEEK_API_KEY=... naesanon/mannequin:v1
+```
+
+From source:
 
 ```sh
 npm install
