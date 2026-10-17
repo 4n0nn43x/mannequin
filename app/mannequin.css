@@ -1,0 +1,23 @@
+/* Mannequin additions on top of Dashtreme */
+.sidebar-header .logo-text { margin-left: 10px; }
+.table.mq-table td, .table.mq-table th { color: #fff; }
+.table.mq-table tr.mq-red > td { --bs-table-bg: rgba(220, 53, 69, 0.45); --bs-table-accent-bg: transparent; }
+.mq-table tr.mq-red { outline: 2px solid #ff4d5e; animation: mq-pulse 1.4s ease-in-out infinite; }
+@keyframes mq-pulse { 50% { box-shadow: 0 0 24px 4px rgba(255, 77, 94, 0.7); } }
+.mq-excerpt { color: #ffd2d6; font-style: italic; }
+.mq-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 3px; }
+.mq-step { min-width: 150px; max-width: 220px; padding: 8px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.12); }
+.mq-console { background: #0b0f14; border-radius: 8px; padding: 10px 12px; height: 640px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; color: #d6deeb; letter-spacing: 0; }
+.mq-console pre { margin: 2px 0 6px; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+.mq-task { color: #c792ea; font-weight: bold; margin-top: 10px; }
+.mq-think { color: #9aa5b1; font-style: italic; margin: 4px 0; }
+.mq-cmd { color: #7fdbca; font-weight: bold; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+.mq-code { background: #141b24; border-left: 3px solid #7fdbca; padding: 6px 8px; color: #e8f0fa; }
+.mq-result { color: #8b96a3; }
+.mq-diff { height: auto; max-height: 420px; }
+.mq-add { color: #8be28b; background: rgba(46, 160, 67, 0.18); }
+.mq-del { color: #ff8f8f; background: rgba(248, 81, 73, 0.18); }
+.mq-report-red { border: 2px solid #ff4d5e; background: rgba(120, 10, 25, 0.45); }
+.mq-proof-ok { border: 2px solid #3ddc84; background: rgba(20, 110, 60, 0.4); }
+.mq-phases li { margin-bottom: 4px; }
+.mq-step .badge { white-space: normal; overflow-wrap: anywhere; text-align: left; }

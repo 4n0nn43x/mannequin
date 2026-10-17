@@ -1,0 +1,30 @@
+{
+  "name": "mannequin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3000}",
+    "run:cli": "tsx scripts/run.ts",
+    "embed": "node scripts/embed.mjs",
+    "prebuild": "node scripts/embed.mjs",
+    "predev": "node scripts/embed.mjs"
+  },
+  "dependencies": {
+    "@nodeops-createos/sandbox": "^0.8.2",
+    "next": "^16.4.2",
+    "openai": "^7.36.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "stripe": "^23.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
