@@ -30,7 +30,6 @@ export function startRun(input: RunInput): string {
   }
   const ahead = store.pending++
   emit({ type: 'log', text: ahead ? `queued: position ${ahead} (one run at a time)` : 'queued: starting now' })
-  emit({ type: 'log', text: `repo ${input.repo}` })
   store.tail = store.tail.then(async () => {
     try {
       await run(input, emit)

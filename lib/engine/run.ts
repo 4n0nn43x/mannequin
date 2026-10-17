@@ -35,6 +35,7 @@ export async function run(input: RunInput, emit: (e: RunEvent) => void): Promise
   const phase = (text: string) => emit({ type: 'phase', text })
   const agentLog = (task: string) => (event: AgentEvent) => emit({ type: 'agent', task, event })
 
+  emit({ type: 'log', text: `repo ${input.repo}` }) // the report reads it
   phase('Preparing the app in a CreateOS snapshot')
   const snap = await ensureSnapshot(input.repo, input.snapshot, emit)
   const fork = async () => {

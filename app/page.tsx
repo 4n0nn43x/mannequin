@@ -22,7 +22,7 @@ export default function Home() {
         </div>
         <div className="card dummies" aria-label="The test customers">
           <div className="crowd">
-            {CLIENTS.map((c, i) => <figure key={c.id}><Dummy size={i ? 34 : 40} walk />{c.id === 'free_control' ? 'free' : c.id}</figure>)}
+            {CLIENTS.filter((c) => !c.multi).map((c, i) => <figure key={c.id}><Dummy size={i ? 34 : 40} walk />{c.id === 'free_control' ? 'free' : c.id}</figure>)}
           </div>
           <div className="eyebrow" style={{ marginBottom: 10 }}>Today&rsquo;s test subjects</div>
           <table>
@@ -31,7 +31,7 @@ export default function Home() {
                 <tr key={c.id}>
                   <td style={{ width: 34 }}><span className="target" aria-hidden style={{ width: 14, height: 14 }} /></td>
                   <td className="mono" style={{ fontWeight: 600, width: 110 }}>{c.id}</td>
-                  <td className="muted">{c.label}</td>
+                  <td className="muted">{c.label}{c.multi && <span className="small"> (apps with 2+ plans)</span>}</td>
                 </tr>
               ))}
             </tbody>
