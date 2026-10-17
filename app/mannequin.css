@@ -9,6 +9,7 @@
   --clay: #b85c3e;
   --dummy: #f5c518;
   --black: #141413;
+  --ring: var(--black); /* outline of the crash-test target */
   --ok: #2f7d55;
   --ok-bg: #e3f1e8;
   --bad: #c8372d;
@@ -40,6 +41,7 @@
     --warn: #e2a948;
     --warn-bg: #3a2f1b;
     --grey: #77726a;
+    --ring: #d9d4c7; /* black quadrants need a light ring on a dark page */
     --code-bg: #141311;
     color-scheme: dark;
   }
@@ -56,7 +58,7 @@ h1, h2, h3 { font-family: var(--pixel); font-weight: 500; letter-spacing: 0; mar
 /* signature motifs */
 .target { display: inline-block; width: 22px; height: 22px; border-radius: 50%; flex: none;
   background: conic-gradient(var(--black) 0 25%, var(--dummy) 0 50%, var(--black) 0 75%, var(--dummy) 0);
-  box-shadow: 0 0 0 2px var(--card), 0 0 0 3px var(--black); }
+  box-shadow: 0 0 0 2px var(--card), 0 0 0 3px var(--ring); }
 .target.big { width: 44px; height: 44px; }
 .hazard { height: 6px; background: repeating-linear-gradient(-45deg, var(--dummy) 0 10px, var(--black) 10px 20px); }
 .hazard.moving { background-size: 28.28px 28.28px; animation: hazard 0.9s linear infinite; }
