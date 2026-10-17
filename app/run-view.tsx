@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Row, RunEvent, Summary } from '@/lib/engine/run'
 import { CLIENTS, DAY, timeline } from '@/lib/engine/timeline'
 import Dummy, { type DummyState } from './dummy'
+import { myRuns, saveRun } from './my-runs'
 
 type Rec = { t: number; e: RunEvent }
 type Step = Extract<RunEvent, { type: 'step' }>
@@ -11,13 +12,16 @@ type AgentEv = Extract<RunEvent, { type: 'agent' }>
 const ok = (status: number) => status >= 200 && status < 300
 const TOTAL_STEPS = timeline(0, 30 * DAY).length // same count whatever t0 and E are
 
-export default function RunView({ src, title }: { src: string; title: string }) {
+/** runId: a live run started from this browser, so its verdict is saved in "My runs". */
+export default function RunView({ src, title, runId }: { src: string; title: string; runId?: string }) {
   const [recs, setRecs] = useState<Rec[]>([])
   const [ended, setEnded] = useState(false)
+  const [gone, setGone] = useState(false)
 
   useEffect(() => {
     const es = new EventSource(src)
     es.onopen = () => setRecs([]) // the server replays everything on (re)connect
+    es.onerror = () => { if (es.readyState === EventSource.CLOSED) setGone(true) } // 404: the server no longer has this run
     es.onmessage = (m) => {
       const r = JSON.parse(m.data) as Rec
       setRecs((prev) => [...prev, r])
@@ -43,7 +47,12 @@ export default function RunView({ src, title }: { src: string; title: string }) 
     }
   }, [recs])
 
-  const live = !ended && !v.summary
+  const live = !ended && !v.summary && !gone
+  useEffect(() => {
+    const mine = runId && myRuns().find((r) => r.id === runId)
+    if (mine && v.summary) saveRun({ ...mine, verdict: v.summary.verdict, leaks: new Set(v.summary.red.map((r) => r.id)).size })
+  }, [runId, v.summary])
+  if (gone && !recs.length) return <div className="alert warn">This run is no longer on the server (it restarted or was redeployed). Runs are kept in memory only.</div>
   const main = v.steps.filter((s) => s.pass === 'main')
   const hooks = v.steps.flatMap((s) => s.deliveries)
   const leaks = new Set(v.rows.filter((r) => r.cell === 'red').map((r) => r.id)).size

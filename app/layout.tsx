@@ -19,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav className="nav">
               <Link href="/">New run</Link>
               <Link href="/replay/sample">Replay demo</Link>
+              <Link href="/my-runs">My runs</Link>
             </nav>
             <span className="testmode">Stripe test mode only</span>
           </div>

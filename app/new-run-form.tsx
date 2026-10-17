@@ -1,6 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { saveRun } from './my-runs'
 
 export default function NewRunForm() {
   const router = useRouter()
@@ -18,7 +19,10 @@ export default function NewRunForm() {
       body: JSON.stringify({ repo: f.get('repo'), stripeKey: f.get('stripeKey'), route: f.get('route') }),
     }).catch(() => null)
     const data = res ? await res.json().catch(() => ({})) : {}
-    if (res?.ok && data.id) return router.push(`/runs/${data.id}`)
+    if (res?.ok && data.id) {
+      saveRun({ id: data.id, repo: String(f.get('repo')).trim(), at: Date.now() })
+      return router.push(`/runs/${data.id}`)
+    }
     setError(data.error ?? 'Could not start the run')
     setBusy(false)
   }
