@@ -1,7 +1,7 @@
 import NewRunForm from './new-run-form'
 
 const HOW = [
-  { icon: 'bx-git-repo-forked', title: 'One fresh VM per run', text: 'Your app is installed and built once in a CreateOS snapshot. Each run forks it into an isolated microVM with a public webhook URL for Stripe; egress is limited to Stripe.' },
+  { icon: 'bx-git-repo-forked', title: 'One fresh VM per run', text: 'Your app is installed and built once in a CreateOS snapshot. Each run forks it into an isolated microVM with a public webhook URL for Stripe; egress is limited to Stripe (and Google Fonts for the rebuild).' },
   { icon: 'bx-bot', title: 'The agent writes and runs its own code', text: 'An LLM agent reads your schema and auth setup, writes seed.js and session.js, runs them, and fixes them until it can log in as any customer.' },
   { icon: 'bx-check-shield', title: 'Deterministic verdict, two controls', text: 'Stripe test clocks play the scenarios. A paying and a free control calibrate the probe at every step. Red only when Stripe says dead for over 24 h but your app still grants paid access.' },
 ]

@@ -1,9 +1,9 @@
 // Stripe side of a run: test clocks, customers, subscriptions, the scripted life events, cleanup.
 // Deterministic, no LLM. Uses the user's TEST key only.
 import Stripe from 'stripe'
-import type { Action, ClientId } from './timeline'
+import { TRIAL_DAYS, type Action, type ClientId } from './timeline'
 
-export type Sub = { id: ClientId; email: string; customer?: string; sub?: string; clock?: string }
+export type Sub = { id: ClientId; email: string; customer?: string; sub?: string; clock?: string; periodEnd?: number }
 
 export function stripeFor(key: string) {
   if (!/^(sk|rk)_test_/.test(key)) throw new Error('Mannequin only accepts Stripe TEST keys (sk_test_ or rk_test_)')
@@ -20,16 +20,20 @@ export async function setup(stripe: Stripe, runId: string, t0: number) {
     B: await stripe.testHelpers.testClocks.create({ frozen_time: t0, name: `mannequin-${runId}-B` }),
   }
   const subs: Sub[] = [{ id: 'free_control', email: `free_control+${runId}@mannequin.test` }]
-  for (const [id, clock] of [['S1', 'A'], ['S2', 'A'], ['S3', 'A'], ['S4', 'B']] as const) {
+  for (const [id, clock] of [['S1', 'A'], ['S2', 'A'], ['S3', 'A'], ['S4', 'B'], ['S5', 'B']] as const) {
     const email = `${id.toLowerCase()}+${runId}@mannequin.test`
+    const trial = id === 'S5' // free trial, no card: Stripe cancels it when the trial ends
     // card as the CUSTOMER default, never on the subscription: S2's dead card must be the one charged later
     const c = await stripe.customers.create({
-      email, test_clock: clocks[clock].id, payment_method: 'pm_card_visa',
-      invoice_settings: { default_payment_method: 'pm_card_visa' }, metadata: { mannequin: runId },
+      email, test_clock: clocks[clock].id, metadata: { mannequin: runId },
+      ...(trial ? {} : { payment_method: 'pm_card_visa', invoice_settings: { default_payment_method: 'pm_card_visa' } }),
     })
-    const s = await stripe.subscriptions.create({ customer: c.id, items: [{ price: price.id }] })
-    if (s.status !== 'active') throw new Error(`${id} subscription is ${s.status}, expected active`)
-    subs.push({ id, email, customer: c.id, sub: s.id, clock: clocks[clock].id })
+    const s = await stripe.subscriptions.create({
+      customer: c.id, items: [{ price: price.id }],
+      ...(trial ? { trial_period_days: TRIAL_DAYS, trial_settings: { end_behavior: { missing_payment_method: 'cancel' } } } : {}),
+    })
+    if (s.status !== (trial ? 'trialing' : 'active')) throw new Error(`${id} subscription is ${s.status}`)
+    subs.push({ id, email, customer: c.id, sub: s.id, clock: clocks[clock].id, periodEnd: s.items.data[0].current_period_end })
   }
   const first = await stripe.subscriptions.retrieve(subs[1].sub!)
   const E = first.items.data[0].current_period_end // end of the first paid period

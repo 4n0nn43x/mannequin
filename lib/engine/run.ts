@@ -37,7 +37,7 @@ export async function run(input: RunInput, emit: (e: RunEvent) => void): Promise
   phase('Preparing the app in a CreateOS snapshot')
   const snap = await ensureSnapshot(input.repo, input.snapshot, emit)
   const fork = async () => {
-    phase('Forking the snapshot into a fresh, isolated VM (egress: Stripe only)')
+    phase('Forking the snapshot into a fresh, isolated VM (egress: Stripe and Google Fonts only)')
     const vm = await snap.fork({ ingress_enabled: true, egress: EGRESS })
     try {
       await vm.waitUntilRunning({ timeoutMs: 300_000 }) // usually ~60 s, sometimes much more
@@ -77,7 +77,7 @@ export async function run(input: RunInput, emit: (e: RunEvent) => void): Promise
     await must(vm, 'cd /root/app && git apply --whitespace=nowarn /root/mq/patch.diff && git diff --stat', 60_000)
     await must(vm, 'cd /root/app && pnpm next build > /run/m/build.log 2>&1 || (tail -30 /run/m/build.log; exit 1)', 0)
     const det = await detect(vm, input)
-    const proof = await scenario(vm, stripe, input, det, 'patched', emit, agentLog, 't0+3d')
+    const proof = await scenario(vm, stripe, input, det, 'patched', emit, agentLog, summary.red[0].step) // replay up to the first leak, whichever customer it is
     summary.patched = proof.summary.rows.filter((r) => r.id === summary.red[0].id).at(-1)
   } catch (e) {
     emit({ type: 'log', text: `patched re-run failed: ${(e as Error).message.slice(0, 300)}` })
@@ -105,7 +105,7 @@ async function scenario(vm: Sandbox, stripe: ReturnType<typeof S.stripeFor>, inp
     }
     const seed = st.subs.map((s) => ({ email: s.email, name: 'Mannequin Customer', // same name for all: the probe must read the plan, not the person
       stripeCustomerId: s.customer ?? null, stripeSubscriptionId: s.sub ?? null,
-      stripePriceId: s.sub ? st.price.id : null, stripeCurrentPeriodEnd: s.sub ? st.E : null }))
+      stripePriceId: s.sub ? st.price.id : null, stripeCurrentPeriodEnd: s.periodEnd ?? null })) // trial: period end = trial end, as checkout would store it
     await put(vm, '/root/mq/seed.json', JSON.stringify(seed))
     await must(vm, 'cd /root/app && node /root/mq/seed.js /root/mq/seed.json')
 
@@ -262,7 +262,7 @@ async function proposePatch(vm: Sandbox, red: Row, det: Detected, agentLog: (t: 
   const handler = (await sh(vm, `cat /root/app/${det.handler}`)).out
   const access = (await sh(vm, `cd /root/app && grep -rln --include=*.ts -E 'isPro|stripeCurrentPeriodEnd' lib app 2>/dev/null | grep -v webhooks | head -2 | xargs -r head -c 2500`)).out
   await agentTask(vm, `A billing leak was PROVEN by running the app (do not investigate it again, do not call Stripe):
-customer ${red.id} is "${red.status}" in Stripe (refunded and canceled more than 24 hours ago) but the app still shows them the paid plan ("${red.excerpt}").
+customer ${red.id} is "${red.status}" in Stripe (dead for more than 24 hours) but the app still shows them the paid plan ("${red.excerpt}").
 
 The webhook handler /root/app/${det.handler}:
 \`\`\`ts

@@ -25,4 +25,10 @@ assert.equal(expected('canceled', s3probe.at, now + 2 * DAY), 'MUST_NOT')
 assert.ok(steps.every((s, i) => i === 0 || s.at > steps[i - 1].at), 'timeline strictly increasing')
 assert.ok(steps.at(-1)!.at - now < 60 * DAY, 'within 2 billing intervals per advance and TLS window')
 assert.equal(HOUR * 24, DAY)
+// S5: trial ends at t0+7d; dead for more than T at the trial+26h probe, not yet at trial+1h
+const t1 = steps.find((s) => s.name === 'trial+1h')!, t2 = steps.find((s) => s.name === 'trial+26h')!
+assert.equal(expected('canceled', t1.at, now + 7 * DAY), 'MAY')
+assert.equal(expected('canceled', t2.at, now + 7 * DAY), 'MUST_NOT')
+assert.equal(expected('trialing', now, null), 'MUST')
+assert.ok(t2.at < now + 30 * DAY - HOUR, 'trial probes come before the first renewal')
 console.log('timeline ok')
