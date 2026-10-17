@@ -38,7 +38,8 @@ export function fingerprint(route: string, paidPages: string[], freePages: strin
 export function fingerprintPlans(route: string, plansPages: Record<string, string[]>, freePages: string[]): Fingerprint | null {
   const byPlan = Object.entries(plansPages).map(([k, pages]) => [k, pages.map(lines)] as const)
   const P = byPlan.flatMap(([, s]) => s), F = freePages.map(lines)
-  const plans = Object.fromEntries(byPlan.map(([k, s]) => [k, onlyIn(s, byPlan.filter(([o]) => o !== k).flatMap(([, x]) => x))]))
+  // a plan line must also be absent from the free page: otherwise a canceled customer's page could match a plan (false red)
+  const plans = Object.fromEntries(byPlan.map(([k, s]) => [k, onlyIn(s, [...byPlan.filter(([o]) => o !== k).flatMap(([, x]) => x), ...F])]))
   const paid = onlyIn(P, F), free = onlyIn(F, P), distinct = Object.values(plans).every((l) => l.length)
   if (!paid.length && !free.length && !distinct) return null
   return { route, paid, free, ...(distinct ? { plans } : {}) }

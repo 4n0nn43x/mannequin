@@ -97,8 +97,7 @@ async function scenario(vm: Sandbox, stripe: ReturnType<typeof S.stripeFor>, inp
   try {
     phase('Creating test clocks, customers and subscriptions in Stripe')
     const t0 = Math.floor(Date.now() / 1000) // never backdate: the app's TLS calls to Stripe follow its clock
-    const st = await S.setup(stripe, Date.now().toString(36), t0, det.plans, det.interval)
-    Object.assign(created, { clocks: st.clocks, prices: Object.values(st.prices), product: st.product.id })
+    const st = await S.setup(stripe, Date.now().toString(36), t0, det.plans, det.interval, created)
 
     const haveSeed = (await sh(vm, 'test -s /root/mq/seed.js')).code === 0
     if (!haveSeed) {
@@ -249,7 +248,7 @@ async function detect(vm: Sandbox, input: RunInput) {
   const auth = await grep(`node -e "const p=require('./package.json');const d={...p.dependencies};console.log(['next-auth','@clerk/nextjs','@supabase/supabase-js','better-auth','lucia'].filter(k=>d[k]).map(k=>k+'@'+d[k]).join(', ')||'unknown')"`)
   const route = input.route ?? ''
   // the app's plans: env vars holding Stripe price ids, from its env template and its code
-  const names = (await sh(vm, `cd /root/app && { cat .env.example .env.local.example .env.sample 2>/dev/null; grep -rhoE --include=*.ts --include=*.tsx --include=*.js --include=*.mjs 'STRIPE_[A-Z0-9_]+' config lib src app pages env.mjs 2>/dev/null; } | grep -oE 'STRIPE_[A-Z0-9_]*(PRICE|PLAN)[A-Z0-9_]*' | sort -u`)).out
+  const names = (await sh(vm, `cd /root/app && { cat .env.example .env.local.example .env.sample 2>/dev/null; grep -rhoE --include=*.ts --include=*.tsx --include=*.js --include=*.mjs '[A-Z0-9_]*STRIPE_[A-Z0-9_]+' config lib src app pages env.mjs 2>/dev/null; } | grep -oE '[A-Z0-9_]*STRIPE_[A-Z0-9_]*(PRICE|PLAN)[A-Z0-9_]*' | sort -u`)).out
   const plans = S.plansFrom(names.split('\n').filter(Boolean))
   return { handler, webhookPath, apiVersion, auth, route, plans, interval: S.intervalOf(plans[0].env) }
 }

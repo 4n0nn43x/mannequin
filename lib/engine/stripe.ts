@@ -13,9 +13,9 @@ const TIER_ORDER = ['free', 'hobby', 'starter', 'basic', 'standard', 'plus', 'pr
 
 /** Plan env var names -> plans, cheapest tier first. No plan found: the single paid plan Mannequin always injected. */
 export function plansFrom(names: string[]): Plan[] {
-  const envs = [...new Set(names)].filter((n) => !/_(KEY|SECRET|URL)$/.test(n))
+  const envs = [...new Set(names)].filter((n) => !/_(KEY|SECRET|URL)$|TABLE|PORTAL/.test(n))
   if (!envs.length) return [{ env: 'STRIPE_PRO_MONTHLY_PLAN_ID', tier: 'PRO' }]
-  const tierOf = (env: string) => env.replace(/^STRIPE_/, '').replace(/(^|_)(PRICE|PLAN|ID|MONTHLY|YEARLY|ANNUAL|MONTH|YEAR)(?=_|$)/g, '').replace(/^_+|_+$/g, '') || 'PAID'
+  const tierOf = (env: string) => env.replace(/^.*?STRIPE_/, '').replace(/(^|_)(PRICE|PLAN|ID|MONTHLY|YEARLY|ANNUAL|MONTH|YEAR)(?=_|$)/g, '').replace(/^_+|_+$/g, '') || 'PAID'
   const rank = (tier: string) => { const i = TIER_ORDER.findIndex((n) => tier.toLowerCase().includes(n)); return i < 0 ? 6.5 : i }
   return envs.map((env) => ({ env, tier: tierOf(env) })).sort((a, b) => rank(a.tier) - rank(b.tier))
 }
@@ -31,21 +31,26 @@ const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms))
 
 /** plans: the app's plans, cheapest tier first (one test price each, at the same interval so clocks advance together).
  * Every customer is on the first plan, except P2 and S7 (most expensive tier) when the app has several tiers. */
-export async function setup(stripe: Stripe, runId: string, t0: number, plans: Plan[], interval: Interval) {
+/** created is filled as objects are made, so a failure half-way still cleans them up. */
+export async function setup(stripe: Stripe, runId: string, t0: number, plans: Plan[], interval: Interval, created: { clocks?: string[]; prices?: string[]; product?: string }) {
   const tiers = [...new Set(plans.map((p) => p.tier))]
   const multi = tiers.length > 1
   const product = await stripe.products.create({ name: 'Mannequin test plan', metadata: { mannequin: runId } })
+  created.product = product.id
+  created.prices = []
+  created.clocks = []
   const prices: Record<string, string> = {} // env var -> price id
   for (const p of plans) {
     const amount = 1000 * (tiers.indexOf(p.tier) + 1) // price order = tier order
     prices[p.env] = (await stripe.prices.create({ product: product.id, unit_amount: amount, currency: 'usd', recurring: { interval }, nickname: p.env })).id
+    created.prices.push(prices[p.env])
   }
   const priceOf = (tier: string) => prices[plans.find((p) => p.tier === tier)!.env]
   const low = priceOf(tiers[0]), high = priceOf(tiers.at(-1)!)
   // at most 3 customers per test clock (Stripe limit)
   const clockIds = multi ? (['A', 'B', 'C', 'D'] as const) : (['A', 'B', 'C'] as const)
   const clocks: Record<string, string> = {}
-  for (const k of clockIds) clocks[k] = (await stripe.testHelpers.testClocks.create({ frozen_time: t0, name: `mannequin-${runId}-${k}` })).id
+  for (const k of clockIds) created.clocks.push(clocks[k] = (await stripe.testHelpers.testClocks.create({ frozen_time: t0, name: `mannequin-${runId}-${k}` })).id)
   const subs: Sub[] = [{ id: 'free_control', email: `free_control+${runId}@mannequin.test` }]
   const plan: [ClientId, string, string][] = [['S1', 'A', low], ['S2', 'A', low], ['S3', 'A', low], ['S4', 'B', low], ['S5', 'B', low], ['S6', 'C', low]]
   if (multi) plan.push(['P2', 'D', high], ['S7', 'D', high])

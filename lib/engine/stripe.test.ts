@@ -7,4 +7,5 @@ const p = plansFrom(['STRIPE_TEAM_PRICE_ID', 'STRIPE_PRICE_ID_BASIC', 'STRIPE_WE
 assert.deepEqual(p.map((x) => x.tier), ['BASIC', 'PRO', 'PRO', 'TEAM']) // cheapest first, secrets dropped
 assert.equal(intervalOf('STRIPE_PRO_YEARLY_PRICE_ID'), 'year')
 assert.equal(intervalOf('STRIPE_PRO_MONTHLY_PLAN_ID'), 'month')
+assert.deepEqual(plansFrom(['NEXT_PUBLIC_STRIPE_PRICE_ID', 'STRIPE_PRICING_TABLE_ID']), [{ env: 'NEXT_PUBLIC_STRIPE_PRICE_ID', tier: 'PAID' }])
 console.log('plans ok')

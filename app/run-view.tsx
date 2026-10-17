@@ -52,8 +52,8 @@ export default function RunView({ src, title }: { src: string; title: string }) 
   function pdf() {
     const t = document.title
     document.title = `Mannequin report ${repo?.replace(/^https:\/\/github\.com\//, '') ?? ''} ${new Date().toISOString().slice(0, 10)}`
+    window.addEventListener('afterprint', () => { document.title = t }, { once: true }) // print() does not block everywhere
     window.print() // the browser saves it as a PDF, laid out by the print-only report below
-    document.title = t
   }
   return (
     <>

@@ -26,4 +26,9 @@ const fp3 = fingerprintPlans('/billing', { PRO_M: [paid('May 1, 2026'), paid('Ma
 assert.equal(fp3.plans, undefined)
 assert.equal(classify(paid('June 2, 2026'), fp3), 'paid')
 assert.equal(planOf(paid('June 2, 2026'), fp3), null)
+// a line shared by the cheap plan and the free page is not a plan line
+const basic = () => page('Basic', '<p>Upgrade to Team</p>'), freeU = () => page('Free', '<p>Upgrade to Team</p>')
+const fp4 = fingerprintPlans('/billing', { Basic: [basic(), basic()], Team: [plan('Team'), plan('Team')] }, [freeU(), freeU()])!
+assert.ok(!fp4.plans!.Basic.includes('Upgrade to Team'))
+assert.equal(classify('<main><p>Subscription canceled</p><p>Upgrade to Team</p></main>', fp4), 'unknown') // never a false paid
 console.log('probe ok')
