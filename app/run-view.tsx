@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Row, RunEvent, Summary } from '@/lib/engine/run'
 import { CLIENTS, DAY, timeline } from '@/lib/engine/timeline'
-import Dummy from './dummy'
+import Dummy, { type DummyState } from './dummy'
 
 type Rec = { t: number; e: RunEvent }
 type Step = Extract<RunEvent, { type: 'step' }>
@@ -110,41 +110,53 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
   )
 }
 
+const STORY: Record<string, string> = {
+  free_control: 'Never subscribes. Must always see the free plan, otherwise the whole run proves nothing.',
+  S1: 'Pays every month with a good card. Must always see the paid plan.',
+  S2: 'At t0+1d the card is swapped for one that declines. At renewal Stripe retries for about a week, then cancels.',
+  S3: 'Refunded and canceled at t0+2d. Should lose paid access within 24 hours.',
+  S4: 'Asks to cancel at period end on t0+5d. Keeps access until the end of the paid period, then loses it.',
+  S5: '7-day free trial without a card. Stripe cancels it when the trial ends.',
+  S6: '7-day trial with a card that declines at the first real charge. Stripe retries, then cancels.',
+  P2: 'Paid control on the other plan. Must always see that plan.',
+  S7: 'Moves from the expensive plan to the cheap one at t0+2d. Must not keep the expensive plan.',
+}
+
 function Track({ rows }: { rows: Row[] }) {
+  const [sel, setSel] = useState<string | null>(null)
+  const lanes = CLIENTS.filter((c) => (rows.length ? rows.some((r) => r.id === c.id) : !c.multi)) // once probed: only the customers this run tested
+  const firstRed = rows.find((r) => r.cell === 'red')?.id
+  const open = sel ?? firstRed ?? null
   return (
-    <Card title="Test track" sub="one lane per customer, one cell per clock step">
-      <div style={{ overflowX: 'auto' }}>
-        <table className="track">
-          <thead><tr><th>Customer</th><th>Stripe</th><th>App shows</th><th>Expected</th><th>Verdict</th><th>Track</th></tr></thead>
-          <tbody>
-            {CLIENTS.filter((c) => (rows.length ? rows.some((r) => r.id === c.id) : !c.multi)).map((c) => { // once probed: only the customers this run tested
-              const mine = rows.filter((r) => r.id === c.id)
-              const last = mine.at(-1)
-              const reds = mine.filter((r) => r.cell === 'red')
-              const red = reds.length > 0 // a leak stays loud even after the app finally cuts access
-              return (
-                <tr key={c.id} className={red ? 'leak' : ''}>
-                  <td><div className="lane-id">{c.id}</div><div className="lane-label">{c.label}</div></td>
-                  <td className="mono small">{last?.status ?? '...'}{last?.stripePlan && <div className="muted">{last.stripePlan}</div>}</td>
-                  <td>{last ? <span className={`chip ${last.seen === 'paid' ? 'c-paid' : last.seen === 'free' ? 'c-free' : 'c-grey'}`}>{last.plan ?? last.seen}</span> : '...'}</td>
-                  <td className="mono small">{last?.expect ?? ''}</td>
-                  <td>
-                    {red ? <span className="chip c-red">Red</span> : last && <span className={`chip c-${last.cell}`}>{last.cell}</span>}
-                    {red ? <div className="small" style={{ marginTop: 4 }}>leaked {reds[0].step}{reds.length > 1 ? ` to ${reds.at(-1)!.step}` : ''}</div> : last && <div className="small muted" style={{ marginTop: 4 }}>{last.step}</div>}
-                    {red && <div className="small quote">&ldquo;{reds[0].excerpt}&rdquo;</div>}
-                  </td>
-                  <td>
-                    <div className="lane">
-                      {mine.map((r) => <span key={r.step} className={`cell new ${r.cell}`} title={`${r.step}: Stripe ${r.status}, app ${r.seen}, ${r.cell}`} />)}
-                      <span className="runner"><Dummy size={16} state={red ? 'red' : last?.cell ?? 'idle'} walk={!!last && mine.length < TOTAL_STEPS} /></span>
-                      {Array.from({ length: Math.max(0, TOTAL_STEPS - mine.length) }, (_, i) => <span key={`e${i}`} className="cell" />)}
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+    <Card title="Test track" sub="click a dummy to open its file">
+      <div className="lanes">
+        {lanes.map((c) => {
+          const mine = rows.filter((r) => r.id === c.id)
+          const last = mine.at(-1)
+          const reds = mine.filter((r) => r.cell === 'red')
+          const red = reds.length > 0 // a leak stays loud even after the app finally cuts access
+          const leakingNow = last?.cell === 'red'
+          const pos = mine.length ? ((mine.length - 0.5) / TOTAL_STEPS) * 100 : 0
+          const state = red ? 'red' : last?.cell ?? 'idle'
+          return (
+            <button key={c.id} type="button" className={`lane ${red ? 'leak' : ''} ${open === c.id ? 'on' : ''}`} onClick={() => setSel(open === c.id ? '' : c.id)} aria-expanded={open === c.id}>
+              <span className="who"><b className="mono">{c.id}</b><span>{c.label}</span></span>
+              <span className="road">
+                {mine.map((r, i) => <i key={r.step} className={`cone ${r.cell}`} style={{ left: `${((i + 0.5) / TOTAL_STEPS) * 100}%` }} title={`${r.step}: Stripe ${r.status}, app ${r.plan ?? r.seen}, ${r.cell}`} />)}
+                <span className="flag" aria-hidden />
+                <span className="runner" style={{ left: `${pos}%` }}>
+                  {leakingNow && <span className="bubble">FREE RIDE!</span>}
+                  <Dummy size={20} state={state as DummyState} walk={!!last && mine.length < TOTAL_STEPS && !leakingNow} />
+                </span>
+              </span>
+              <span className="now">
+                <span className="mono small">{last?.status ?? 'waiting'}</span>
+                {last && <span className={`chip ${last.seen === 'paid' ? 'c-paid' : last.seen === 'free' ? 'c-free' : 'c-grey'}`}>{last.plan ?? last.seen}</span>}
+                {red ? <span className="chip c-red">Red</span> : last && <span className={`chip c-${last.cell}`}>{last.cell}</span>}
+              </span>
+            </button>
+          )
+        })}
       </div>
       <div className="legend">
         <span><i style={{ background: 'var(--ok)' }} />as expected</span>
@@ -152,7 +164,45 @@ function Track({ rows }: { rows: Row[] }) {
         <span><i style={{ background: 'var(--warn)' }} />access cut while paying</span>
         <span><i style={{ background: 'var(--grey)' }} />page unreadable</span>
       </div>
+      {open && lanes.some((c) => c.id === open) && <DummyFile id={open} rows={rows.filter((r) => r.id === open)} />}
     </Card>
+  )
+}
+
+function DummyFile({ id, rows }: { id: string; rows: Row[] }) {
+  const reds = rows.filter((r) => r.cell === 'red')
+  const state: DummyState = reds.length ? 'red' : (rows.at(-1)?.cell as DummyState) ?? 'idle'
+  return (
+    <div className="file">
+      <div className="file-head">
+        <Dummy size={56} state={state} walk={!reds.length && rows.length > 0 && rows.length < TOTAL_STEPS} />
+        <div>
+          <div className="eyebrow">Dummy file</div>
+          <h3>{id}: {label(id)}</h3>
+          <p className="muted small" style={{ margin: '4px 0 0' }}>{STORY[id]}</p>
+          {reds.length > 0 && <p className="small" style={{ margin: '6px 0 0' }}><LeakSentence r={reds[0]} /> Leak from <b className="mono">{reds[0].step}</b> to <b className="mono">{reds.at(-1)!.step}</b>.</p>}
+        </div>
+      </div>
+      {rows.length ? (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="track">
+            <thead><tr><th>Step</th><th>Stripe</th><th>App shows</th><th>Expected</th><th>Verdict</th><th>Page evidence</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.step} className={r.cell === 'red' ? 'leak' : ''}>
+                  <td className="mono">{r.step}</td>
+                  <td className="mono small">{r.status}{r.stripePlan && <div className="muted">{r.stripePlan}</div>}</td>
+                  <td><span className={`chip ${r.seen === 'paid' ? 'c-paid' : r.seen === 'free' ? 'c-free' : 'c-grey'}`}>{r.plan ?? r.seen}</span></td>
+                  <td className="mono small">{r.expect}</td>
+                  <td><span className={`chip c-${r.cell}`}>{r.cell}</span></td>
+                  <td className="small muted">{r.excerpt}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : <p className="muted small">Not probed yet.</p>}
+    </div>
   )
 }
 
