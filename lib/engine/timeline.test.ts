@@ -42,4 +42,8 @@ assert.equal(planCell('red', now, ch, 0, 0), 'red') // status verdict wins
 assert.match(controlsOk([{ id: 'free_control', status: 'none', seen: 'free' }, { id: 'P2', status: 'active', seen: 'free' }])!, /P2/)
 // S7 changes plan at t0+2d: the t0+3d probe is more than T later
 assert.ok(steps.find((s) => s.name === 't0+3d')!.at - steps.find((s) => s.actions.includes('change_plan_S7'))!.at > T)
+// S8: card fixed during the retries (after the failed renewal, before Stripe gives up around E+8d)
+const fixAt = steps.find((s) => s.actions.includes('fix_card_S8'))!.at, E = now + 30 * DAY
+assert.ok(fixAt > E + HOUR && fixAt < E + 8 * DAY)
+assert.equal(cell(expected('active', fixAt, null), 'free'), 'orange') // paid again but still cut: orange, never red
 console.log('timeline ok')

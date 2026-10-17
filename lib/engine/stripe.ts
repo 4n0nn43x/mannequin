@@ -52,7 +52,7 @@ export async function setup(stripe: Stripe, runId: string, t0: number, plans: Pl
   const clocks: Record<string, string> = {}
   for (const k of clockIds) created.clocks.push(clocks[k] = (await stripe.testHelpers.testClocks.create({ frozen_time: t0, name: `mannequin-${runId}-${k}` })).id)
   const subs: Sub[] = [{ id: 'free_control', email: `free_control+${runId}@mannequin.test` }]
-  const plan: [ClientId, string, string][] = [['S1', 'A', low], ['S2', 'A', low], ['S3', 'A', low], ['S4', 'B', low], ['S5', 'B', low], ['S6', 'C', low]]
+  const plan: [ClientId, string, string][] = [['S1', 'A', low], ['S2', 'A', low], ['S3', 'A', low], ['S4', 'B', low], ['S5', 'B', low], ['S6', 'C', low], ['S8', 'C', low]]
   if (multi) plan.push(['P2', 'D', high], ['S7', 'D', high])
   for (const [id, clock, price] of plan) {
     const email = `${id.toLowerCase()}+${runId}@mannequin.test`
@@ -91,11 +91,20 @@ export async function advance(stripe: Stripe, clocks: string[], to: number) {
 
 export async function act(stripe: Stripe, action: Action, subs: Sub[]) {
   const by = (id: ClientId) => subs.find((s) => s.id === id)!
-  if (action === 'kill_card_S2') {
-    const s2 = by('S2')
-    const dead = await stripe.paymentMethods.attach('pm_card_chargeCustomerFail', { customer: s2.customer! })
-    await stripe.customers.update(s2.customer!, { invoice_settings: { default_payment_method: dead.id } })
-    return 'S2: card replaced by one that declines at the next charge'
+  if (action === 'kill_card_S2' || action === 'kill_card_S8') {
+    const id = action === 'kill_card_S2' ? 'S2' : 'S8'
+    const s = by(id)
+    const dead = await stripe.paymentMethods.attach('pm_card_chargeCustomerFail', { customer: s.customer! })
+    await stripe.customers.update(s.customer!, { invoice_settings: { default_payment_method: dead.id } })
+    return `${id}: card replaced by one that declines at the next charge`
+  }
+  if (action === 'fix_card_S8') {
+    const s8 = by('S8')
+    const good = await stripe.paymentMethods.attach('pm_card_visa', { customer: s8.customer! })
+    await stripe.customers.update(s8.customer!, { invoice_settings: { default_payment_method: good.id } })
+    const [inv] = (await stripe.invoices.list({ subscription: s8.sub!, status: 'open', limit: 1 })).data
+    if (inv) await stripe.invoices.pay(inv.id!, { payment_method: good.id })
+    return `S8: new working card${inv ? `, open invoice paid (${(inv.amount_due / 100).toFixed(2)} ${inv.currency.toUpperCase()})` : ', no open invoice to pay'}`
   }
   if (action === 'refund_cancel_S3') {
     const s3 = by('S3')

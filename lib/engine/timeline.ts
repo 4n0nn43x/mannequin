@@ -6,8 +6,8 @@ export const DAY = 24 * HOUR
 export const T = 24 * HOUR // tolerance after Stripe says the subscription is dead
 export const TRIAL_DAYS = 7 // S5
 
-export type ClientId = 'free_control' | 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'P2' | 'S7'
-export type Action = 'kill_card_S2' | 'refund_cancel_S3' | 'cancel_at_period_end_S4' | 'change_plan_S7'
+export type ClientId = 'free_control' | 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'S8' | 'P2' | 'S7'
+export type Action = 'kill_card_S2' | 'refund_cancel_S3' | 'cancel_at_period_end_S4' | 'change_plan_S7' | 'kill_card_S8' | 'fix_card_S8'
 export type Expect = 'MUST' | 'MAY' | 'MUST_NOT'
 export type Seen = 'paid' | 'free' | 'unknown'
 export type Cell = 'green' | 'red' | 'orange' | 'grey'
@@ -21,6 +21,7 @@ export const CLIENTS: { id: ClientId; label: string; clock: 'A' | 'B' | 'C' | 'D
   { id: 'S4', label: 'Cancels at period end', clock: 'B' },
   { id: 'S5', label: 'Free trial, no card, expires', clock: 'B' },
   { id: 'S6', label: 'Trial with a card that declines', clock: 'C' },
+  { id: 'S8', label: 'Card dies, then fixed', clock: 'C' },
   { id: 'P2', label: 'Paid control (other plan)', clock: 'D', multi: true },
   { id: 'S7', label: 'Downgrades to a cheaper plan', clock: 'D', multi: true },
 ]
@@ -31,7 +32,7 @@ export type Step = { name: string; at: number; actions: Action[] }
 export function timeline(t0: number, E: number): Step[] {
   return [
     { name: 't0', at: t0, actions: [] },
-    { name: 't0+1d', at: t0 + DAY, actions: ['kill_card_S2'] },
+    { name: 't0+1d', at: t0 + DAY, actions: ['kill_card_S2', 'kill_card_S8'] },
     { name: 't0+2d', at: t0 + 2 * DAY, actions: ['refund_cancel_S3', 'change_plan_S7'] },
     { name: 't0+3d', at: t0 + 3 * DAY + HOUR, actions: [] },
     { name: 't0+5d', at: t0 + 5 * DAY, actions: ['cancel_at_period_end_S4'] },
@@ -40,7 +41,7 @@ export function timeline(t0: number, E: number): Step[] {
     { name: 'E-1h', at: E - HOUR, actions: [] },
     { name: 'E+1h', at: E + HOUR, actions: [] },
     { name: 'E+25h', at: E + T + HOUR, actions: [] },
-    { name: 'E+4d', at: E + 4 * DAY, actions: [] },
+    { name: 'E+4d', at: E + 4 * DAY, actions: ['fix_card_S8'] }, // S8 pays during the retries: access must come back
     { name: 'E+8d', at: E + 8 * DAY, actions: [] },
     { name: 'E+9d', at: E + 9 * DAY + HOUR, actions: [] },
   ]

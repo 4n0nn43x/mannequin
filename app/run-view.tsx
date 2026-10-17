@@ -118,6 +118,7 @@ const STORY: Record<string, string> = {
   S4: 'Asks to cancel at period end on t0+5d. Keeps access until the end of the paid period, then loses it.',
   S5: '7-day free trial without a card. Stripe cancels it when the trial ends.',
   S6: '7-day trial with a card that declines at the first real charge. Stripe retries, then cancels.',
+  S8: 'Same dead card as S2, but at E+4d, during the retries, puts in a working card and pays. Must get paid access back.',
   P2: 'Paid control on the other plan. Must always see that plan.',
   S7: 'Moves from the expensive plan to the cheap one at t0+2d. Must not keep the expensive plan.',
 }
