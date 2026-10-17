@@ -24,31 +24,29 @@ export default function NewRunForm() {
   }
 
   return (
-    <form onSubmit={submit} className="row g-3">
-      <div className="col-lg-6">
-        <label className="form-label" htmlFor="repo"><i className="bx bxl-github" /> GitHub repo</label>
-        <input id="repo" name="repo" className="form-control" defaultValue="https://github.com/shadcn-ui/taxonomy" required />
+    <form onSubmit={submit} className="form">
+      <div className="form-row">
+        <div className="field">
+          <label htmlFor="repo">GitHub repo</label>
+          <input id="repo" name="repo" defaultValue="https://github.com/shadcn-ui/taxonomy" required />
+        </div>
+        <div className="field">
+          <label htmlFor="stripeKey">Stripe test key</label>
+          <input id="stripeKey" name="stripeKey" type="password" placeholder="sk_test_..." autoComplete="off" required />
+          <div className="hint">Test keys only (sk_test_ or rk_test_), never stored.</div>
+        </div>
       </div>
-      <div className="col-lg-6">
-        <label className="form-label" htmlFor="stripeKey"><i className="bx bx-key" /> Stripe test key</label>
-        <input id="stripeKey" name="stripeKey" type="password" className="form-control" placeholder="sk_test_..." autoComplete="off" required />
-        <div className="form-text text-white-50">Test keys only (sk_test_ or rk_test_), never stored.</div>
-      </div>
-      <div className="col-12">
-        <details>
-          <summary className="text-white-50">Advanced</summary>
-          <div className="mt-2 col-lg-6">
-            <label className="form-label" htmlFor="route">Probe route (optional)</label>
-            <input id="route" name="route" className="form-control" placeholder="/dashboard/billing" />
-            <div className="form-text text-white-50">The page that shows paid vs free. Detected automatically if empty.</div>
-          </div>
-        </details>
-      </div>
-      {error && <div className="col-12"><div className="alert alert-danger mb-0">{error}</div></div>}
-      <div className="col-12">
-        <button className="btn btn-light px-5" disabled={busy}>
-          {busy ? <i className="bx bx-loader-alt bx-spin" /> : <i className="bx bx-play-circle" />} Crash-test
-        </button>
+      <details>
+        <summary>Advanced</summary>
+        <div className="field" style={{ marginTop: 10, maxWidth: 420 }}>
+          <label htmlFor="route">Probe route (optional)</label>
+          <input id="route" name="route" placeholder="/dashboard/billing" />
+          <div className="hint">The page that shows paid vs free. Detected automatically if empty.</div>
+        </div>
+      </details>
+      {error && <div className="alert bad">{error}</div>}
+      <div>
+        <button className="btn" disabled={busy}>{busy ? <span className="spin" /> : <span className="target" aria-hidden />} Start the crash test</button>
       </div>
     </form>
   )

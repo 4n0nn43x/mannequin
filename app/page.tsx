@@ -1,36 +1,53 @@
 import NewRunForm from './new-run-form'
+import Dummy from './dummy'
+import { CLIENTS } from '@/lib/engine/timeline'
 
 const HOW = [
-  { icon: 'bx-git-repo-forked', title: 'One fresh VM per run', text: 'Your app is installed and built once in a CreateOS snapshot. Each run forks it into an isolated microVM with a public webhook URL for Stripe; egress is limited to Stripe (and Google Fonts for the rebuild).' },
-  { icon: 'bx-bot', title: 'The agent writes and runs its own code', text: 'An LLM agent reads your schema and auth setup, writes seed.js and session.js, runs them, and fixes them until it can log in as any customer.' },
-  { icon: 'bx-check-shield', title: 'Deterministic verdict, two controls', text: 'Stripe test clocks play the scenarios. A paying and a free control calibrate the probe at every step. Red only when Stripe says dead for over 24 h but your app still grants paid access.' },
+  { title: 'One fresh VM per run', text: 'Your app is installed and built once in a CreateOS snapshot. Each run forks it into an isolated microVM with a public webhook URL for Stripe; egress is limited to Stripe (and Google Fonts for the rebuild).' },
+  { title: 'The agent writes and runs its own code', text: 'An LLM agent reads your schema and auth setup, writes seed.js and session.js, runs them, and fixes them until it can log in as any customer.' },
+  { title: 'Deterministic verdict, two controls', text: 'Stripe test clocks play the scenarios. A paying and a free control calibrate the probe at every step. Red only when Stripe says dead for over 24 h but your app still grants paid access.' },
 ]
 
 export default function Home() {
   return (
     <>
-      <div className="card radius-10">
-        <div className="card-body p-4">
-          <h2 className="mb-2 text-white">Crash-test customers for your Stripe subscriptions</h2>
-          <p className="mb-4 text-white-50 fs-6">
+      <section className="hero">
+        <div>
+          <span className="eyebrow">Crash-test lab for Stripe subscriptions</span>
+          <h1>Send in the dummies. See who keeps paid access for free.</h1>
+          <p className="lead">
             Mannequin boots your real app, lives fake customers through months of accelerated billing, logs in as each of them and tells you who keeps paid access without paying, with the fix proven on a fresh fork.
           </p>
           <NewRunForm />
         </div>
-      </div>
-      <div className="row row-cols-1 row-cols-lg-3">
-        {HOW.map((h) => (
-          <div className="col" key={h.title}>
-            <div className="card radius-10 h-100">
-              <div className="card-body">
-                <div className="d-flex align-items-center gap-2 mb-2"><i className={`bx ${h.icon} fs-3 text-white`} /><h6 className="mb-0 text-white">{h.title}</h6></div>
-                <p className="mb-0 text-white-50">{h.text}</p>
-              </div>
-            </div>
+        <div className="card dummies" aria-label="The test customers">
+          <div className="crowd">
+            {CLIENTS.map((c, i) => <figure key={c.id}><Dummy size={i ? 34 : 40} walk />{c.id === 'free_control' ? 'free' : c.id}</figure>)}
+          </div>
+          <div className="eyebrow" style={{ marginBottom: 10 }}>Today&rsquo;s test subjects</div>
+          <table>
+            <tbody>
+              {CLIENTS.map((c) => (
+                <tr key={c.id}>
+                  <td style={{ width: 34 }}><span className="target" aria-hidden style={{ width: 14, height: 14 }} /></td>
+                  <td className="mono" style={{ fontWeight: 600, width: 110 }}>{c.id}</td>
+                  <td className="muted">{c.label}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="steps3">
+        {HOW.map((h, i) => (
+          <div className="card card-b" key={h.title}>
+            <div className="num">0{i + 1}</div>
+            <h3>{h.title}</h3>
+            <p>{h.text}</p>
           </div>
         ))}
-      </div>
-      <p className="text-center text-white-50 mt-2">Stripe Projects + CreateOS Sandbox + Stripe test clocks</p>
+      </section>
+      <p className="foot">Stripe Projects + CreateOS Sandbox + Stripe test clocks</p>
     </>
   )
 }

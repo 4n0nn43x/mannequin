@@ -8,37 +8,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
-        <link rel="stylesheet" href="/dashtreme/css/bootstrap.min.css" />
-        <link rel="stylesheet" href="/dashtreme/css/bootstrap-extended.css" />
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" />
-        <link rel="stylesheet" href="/dashtreme/css/app.css" />
-        <link rel="stylesheet" href="/dashtreme/css/icons.css" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&family=Pixelify+Sans:wght@400;500;600&display=swap" />
       </head>
-      <body className="bg-theme bg-theme1">
-        <div className="wrapper">
-          <div className="sidebar-wrapper">
-            <div className="sidebar-header">
-              <i className="bx bx-body fs-3 text-white" />
-              <h4 className="logo-text">Mannequin</h4>
-            </div>
-            <ul className="metismenu" id="menu">
-              <li><Link href="/"><div className="parent-icon"><i className="bx bx-play-circle" /></div><div className="menu-title">New run</div></Link></li>
-              <li><Link href="/replay/sample"><div className="parent-icon"><i className="bx bx-movie-play" /></div><div className="menu-title">Replay demo</div></Link></li>
-            </ul>
+      <body>
+        <header className="top">
+          <div className="top-in">
+            <Link href="/" className="brand"><span className="target" aria-hidden /> Mannequin</Link>
+            <nav className="nav">
+              <Link href="/">New run</Link>
+              <Link href="/replay/sample">Replay demo</Link>
+            </nav>
+            <span className="testmode">Stripe test mode only</span>
           </div>
-          <header>
-            <div className="topbar d-flex align-items-center">
-              <nav className="navbar navbar-expand gap-3 w-100">
-                <div className="text-white fw-bold d-lg-none">Mannequin</div>
-                <div className="text-white-50">Crash-test customers for your Stripe subscriptions</div>
-                <div className="ms-auto"><span className="badge bg-warning text-dark"><i className="bx bx-test-tube" /> Stripe test mode only</span></div>
-              </nav>
-            </div>
-          </header>
-          <div className="page-wrapper">
-            <div className="page-content">{children}</div>
-          </div>
-        </div>
+        </header>
+        <main>{children}</main>
       </body>
     </html>
   )
