@@ -8,6 +8,22 @@ without paying**, with the fix proven.
 
 Mannequin never reads your access-control code. It logs in as your customers and looks at what your app shows them.
 
+**Live:** https://production-mannequin-crashtest.tyzo.nodeops.app (deployed on CreateOS) ·
+**Replay of a real run:** `/replay/sample`
+
+## Result on shadcn-ui/taxonomy (real run)
+
+| Customer | Stripe says | App shows | Verdict |
+|---|---|---|---|
+| free_control (never paid) | no subscription | Free | green |
+| S1 normal renewal | active | PRO | green |
+| S2 card dies at renewal | past_due, then canceled after 1 week of retries | PRO, then Free | green |
+| **S3 refunded, then canceled** | **canceled** (10.00 USD refunded) | **"PRO / The PRO plan has unlimited posts."** from t0+3d to E+1h | **RED** |
+| S4 cancels at period end | active, then canceled at period end | PRO, then Free | green |
+
+The agent's patch (a `customer.subscription.deleted` handler using `updateMany`) was applied in a **fresh CreateOS
+fork**, the app rebuilt, and S3 replayed: Free at t0+3d, **green**.
+
 ## The bug it finds
 
 `shadcn-ui/taxonomy` (19k stars, 2.7k forks) only handles `checkout.session.completed` and `invoice.payment_succeeded`,
