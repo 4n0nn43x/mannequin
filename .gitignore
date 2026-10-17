@@ -4,6 +4,9 @@ next-env.d.ts
 runs/*
 !runs/sample.events.jsonl
 
+.createos.json
+tsconfig.tsbuildinfo
+
 .projects/cache
 .projects/vault
 .projects/state.test.json
@@ -11,5 +14,3 @@ runs/*
 .env
 .env.*
 !.env.example
-.createos.json
-tsconfig.tsbuildinfo
