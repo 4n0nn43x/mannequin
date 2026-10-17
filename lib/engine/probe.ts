@@ -21,22 +21,46 @@ export function lines(html: string): Set<string> {
   return out
 }
 
-export type Fingerprint = { route: string; paid: string[]; free: string[] }
+/** plans: per plan, the lines that tell it apart from the app's other plans (only when every plan is distinguishable). */
+export type Fingerprint = { route: string; paid: string[]; free: string[]; plans?: Record<string, string[]> }
+
+const onlyIn = (A: Set<string>[], B: Set<string>[]) => [...A[0]].filter((l) => A.every((a) => a.has(l)) && B.every((b) => !b.has(l)))
 
 /** Lines present in every paid sample and no free sample, and the reverse. */
 export function fingerprint(route: string, paidPages: string[], freePages: string[]): Fingerprint | null {
   const P = paidPages.map(lines), F = freePages.map(lines)
-  const onlyIn = (A: Set<string>[], B: Set<string>[]) => [...A[0]].filter((l) => A.every((a) => a.has(l)) && B.every((b) => !b.has(l)))
   const paid = onlyIn(P, F), free = onlyIn(F, P)
   return paid.length || free.length ? { route, paid, free } : null
 }
 
+/** Several plans: paid vs free as above over all plans, plus one fingerprint per plan against the other plans.
+ * Plans the page cannot tell apart (e.g. monthly and yearly of the same tier) give no plan fingerprint at all. */
+export function fingerprintPlans(route: string, plansPages: Record<string, string[]>, freePages: string[]): Fingerprint | null {
+  const byPlan = Object.entries(plansPages).map(([k, pages]) => [k, pages.map(lines)] as const)
+  const P = byPlan.flatMap(([, s]) => s), F = freePages.map(lines)
+  const plans = Object.fromEntries(byPlan.map(([k, s]) => [k, onlyIn(s, byPlan.filter(([o]) => o !== k).flatMap(([, x]) => x))]))
+  const paid = onlyIn(P, F), free = onlyIn(F, P), distinct = Object.values(plans).every((l) => l.length)
+  if (!paid.length && !free.length && !distinct) return null
+  return { route, paid, free, ...(distinct ? { plans } : {}) }
+}
+
+const score = (L: Set<string>, want: string[]) => want.filter((l) => L.has(l)).length / Math.max(1, want.length)
+
+/** The plan the page shows, or null when no plan fingerprint matches clearly. */
+export function planOf(html: string, fp: Fingerprint): string | null {
+  if (!fp.plans) return null
+  const L = lines(html)
+  const s = Object.entries(fp.plans).map(([k, want]) => [k, score(L, want)] as const).sort((a, b) => b[1] - a[1])
+  return s[0][1] >= 0.5 && (s.length < 2 || s[0][1] > s[1][1]) ? s[0][0] : null
+}
+
 export function classify(html: string, fp: Fingerprint): Seen {
   const L = lines(html)
-  const p = fp.paid.filter((l) => L.has(l)).length / Math.max(1, fp.paid.length)
-  const f = fp.free.filter((l) => L.has(l)).length / Math.max(1, fp.free.length)
+  const p = score(L, fp.paid)
+  const f = score(L, fp.free)
   if (p > f && p >= 0.5) return 'paid'
   if (f > p && f >= 0.5) return 'free'
+  if (f < 0.5 && planOf(html, fp)) return 'paid' // plans share no line: a recognized plan is paid access
   return 'unknown'
 }
 
@@ -51,5 +75,5 @@ export async function fetchAs(vm: Sandbox, email: string, route: string): Promis
 /** Short excerpt of the decisive line(s), for the report. */
 export function evidence(html: string, fp: Fingerprint): string {
   const L = lines(html)
-  return [...fp.paid, ...fp.free].filter((l) => L.has(l)).slice(0, 2).join(' / ')
+  return [...fp.paid, ...fp.free, ...Object.values(fp.plans ?? {}).flat()].filter((l) => L.has(l)).slice(0, 2).join(' / ')
 }
